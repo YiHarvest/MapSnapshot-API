@@ -1,0 +1,20 @@
+[project]
+name = "region-view-dashboard"
+version = "1.0.0"
+description = "Region view dashboard and map snapshot service."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "playwright>=1.60.0",
+  "jinja2>=3.1.6",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+

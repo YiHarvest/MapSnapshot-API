@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>地图标记截图</title>
+  <style>
+    html, body, #map { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    html, body { overscroll-behavior: none; }
+    #map { background: #ffffff !important; }
+    #map { touch-action: none; }
+    body { background: #f4f6f8; font-family: "Noto Sans CJK SC", sans-serif; }
+    .amap-layer-tile {
+      display: none !important;
+    }
+    /* 高德地图控件 z-index */
+    .amap-copyright,
+    .amap-logo,
+    .amap-maptype,
+    [class*="amap-copyright"],
+    [class*="amap-logo"],
+    a[href*="amap.com"],
+    a[href*="autonavi.com"] {
+      display: none !important;
+      z-index: 5 !important;
+    }
+    .amap-controls,
+    .amap-scale-textcontrol,
+    .amap-scale,
+    [class*="amap-scale"] {
+      z-index: 150 !important;
+    }
+    body.is-map-booting #map {
+      opacity: 0;
+    }
+    body.is-map-booting #selectionLayer {
+      opacity: 0;
+    }
+    #selectionLayer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1400;
+    }
+    body.is-map-interacting #selectionLayer {
+      opacity: 0;
+    }
+    .selected-card {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 156px;
+      max-width: 240px;
+      padding: 12px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.98);
+      color: #111827;
+      font-size: 15px;
+      white-space: normal;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+      text-align: left;
+      box-shadow: 0 10px 24px rgba(31, 45, 61, 0.18);
+      transform: translate(-50%, -110%);
+    }
+    .amap-marker-content {
+      width: max-content !important;
+    }
+    .selected-card::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      width: 13px;
+      height: 13px;
+      border-right: 1px solid rgba(255, 255, 255, 0.95);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.98);
+      transform: translateX(-50%) rotate(45deg);
+      border-radius: 2px;
+    }
+    .selected-card__name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #374151;
+      line-height: 1.2;
+    }
+    .selected-card__status {
+      margin-top: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #6b7280;
+      line-height: 1.2;
+    }
+    .snapshot-summary {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 1000;
+      max-width: min(520px, calc(100vw - 36px));
+      padding: 12px 16px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 6px 18px rgba(31, 45, 61, 0.1);
+      color: #1f2937;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .snapshot-summary > div {
+      display: flex;
+      flex-wrap: wrap;
+      column-gap: 18px;
+      row-gap: 2px;
+      align-items: baseline;
+    }
+    .snapshot-summary strong {
+      font-weight: 800;
+      color: #111827;
+    }
+    @media (max-width: 640px) {
+      .snapshot-summary {
+        top: 8px;
+        left: 8px;
+        max-width: calc(100vw - 16px);
+        max-height: min(30vh, 180px);
+        box-sizing: border-box;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 7px 9px;
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.32;
+        scrollbar-width: thin;
+      }
+      .snapshot-summary > div {
+        column-gap: 10px;
+        row-gap: 1px;
+        word-break: break-word;
+      }
+      .selected-card {
+        min-width: 116px;
+        max-width: min(220px, calc(100vw - 32px));
+        padding: 9px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+      .selected-card__name {
+        font-size: 14px;
+      }
+      .selected-card__status {
+        margin-top: 6px;
+        font-size: 12px;
+      }
+    }
+  </style>
+  <script>
+    window.__MAP_READY__ = false;
+    {{ security_config_js | safe }}
+  </script>
+  <script src="https://webapi.amap.com/maps?v=2.0&key={{ amap_key }}"></script>
+</head>
+<body class="is-map-booting is-map-interacting">
+  <div class="snapshot-summary" id="summary"></div>
+  <div id="map"></div>
+  <div id="selectionLayer" aria-hidden="true"></div>
+  <script>
+    const taskData = {{ task_data | tojson }};
+    const valueLabel = String(taskData.valueLabel || "状态");
+    const baseAreaStyle = {
+      strokeColor: "#ffffff",
+      strokeOpacity: 0.96,
+      strokeWeight: 1.3,
+      fillColor: "#cfd5dd",
+      fillOpacity: 1,
+      zIndex: 10,
+    };
+    const detailLineStyle = {
+      strokeColor: "#ffffff",
+      strokeOpacity: 0.9,
+      strokeWeight: 1,
+      fillColor: "#dfe3e8",
+      fillOpacity: 0,
+      zIndex: 20,
+    };
+    const highlightStyle = {
+      strokeColor: "#ffffff",
+      strokeOpacity: 0.95,
+      strokeWeight: 1.2,
+      fillColor: "#2f80ed",
+      fillOpacity: 0.9,
+      zIndex: 30,
+    };
+    const selectedStyle = {
+      strokeColor: "#ffffff",
+      strokeOpacity: 0.95,
+      strokeWeight: 1.2,
+      fillColor: "#f5c542",
+      fillOpacity: 0.92,
+      zIndex: 80,
+    };
+    const highlightedAdcodes = new Set(taskData.regions.map((region) => String(region.adcode || "")));
+    const highlightedRegionByAdcode = new Map(
+      taskData.regions.map((region) => [String(region.adcode || ""), region])
+    );
+    const loadedGeoJson = new Map();
+    const renderedDetailLayers = new Map();
+    let selectedPolygonLayers = [];
+    let selectedRegion = null;
+    let renderScheduled = false;
+    let handleRegionHover = null;
+    let tapCandidate = null;
+    let hoverRequestId = 0;
+    let interactionFallbackTimer = null;
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function loadMapPlugins() {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          if (AMap.Scale) {
+            console.warn("AMap plugin callback timeout, using detected plugins");
+            resolve();
+            return;
+          }
+          reject(new Error("AMap plugin load timeout"));
+        }, {{ map_ready_fallback_timeout_ms }});
+
+        AMap.plugin(["AMap.Scale"], () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timeout);
+          if (!AMap.Scale) {
+            reject(new Error("AMap.Scale plugin load failed"));
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+
+    async function loadGeoJson(path) {
+      if (loadedGeoJson.has(path)) {
+        return loadedGeoJson.get(path);
+      }
+      const response = await fetch(path);
+      if (!response.ok) {
+        loadedGeoJson.set(path, null);
+        return null;
+      }
+      const geojson = await response.json();
+      loadedGeoJson.set(path, geojson);
+      return geojson;
+    }
+
+    async function loadGeoJsonEntries(paths) {
+      const uniquePaths = Array.from(new Set(paths.filter(Boolean)));
+      const entries = await Promise.all(uniquePaths.map(async (path) => [path, await loadGeoJson(path)]));
+      return new Map(entries);
+    }
+
+    function normalizePolygonPaths(geometry) {
+      if (!geometry || !Array.isArray(geometry.coordinates)) {
+        return [];
+      }
+      if (geometry.type === "Polygon") {
+        return geometry.coordinates;
+      }
+      if (geometry.type === "MultiPolygon") {
+        return geometry.coordinates.flat();
+      }
+      return [];
+    }
+
+    function normalizePolygonParts(geometry) {
+      if (!geometry || !Array.isArray(geometry.coordinates)) {
+        return [];
+      }
+      if (geometry.type === "Polygon") {
+        return [geometry.coordinates];
+      }
+      if (geometry.type === "MultiPolygon") {
+        return geometry.coordinates;
+      }
+      return [];
+    }
+
+    function renderFeature(map, feature, style) {
+      return normalizePolygonPaths(feature.geometry).map((rings) => {
+        const polygon = new AMap.Polygon({
+          path: rings,
+          clickable: true,
+          ...style,
+        });
+        polygon.on("mousemove", (event) => {
+          if (typeof handleRegionHover === "function") {
+            handleRegionHover(event);
+          }
+        });
+        polygon.setMap(map);
+        return polygon;
+      });
+    }
+
+    function renderFeatureCollection(map, geojson, styleForFeature, shouldRender = () => true) {
+      if (!geojson || !Array.isArray(geojson.features)) {
+        return [];
+      }
+      return geojson.features.flatMap((feature) => {
+        const properties = feature.properties || {};
+        const adcode = String(properties.adcode || "");
+        if (!adcode || adcode === "100000" || !shouldRender(feature)) {
+          return [];
+        }
+        return renderFeature(map, feature, styleForFeature(feature));
+      });
+    }
+
+    function getPolygonBoundsArea(polygon) {
+      const path = polygon.getPath();
+      if (!Array.isArray(path) || !path.length) {
+        return 0;
+      }
+
+      let minLng = Number.POSITIVE_INFINITY;
+      let minLat = Number.POSITIVE_INFINITY;
+      let maxLng = Number.NEGATIVE_INFINITY;
+      let maxLat = Number.NEGATIVE_INFINITY;
+
+      for (const item of path) {
+        const lng = Number(typeof item.getLng === "function" ? item.getLng() : item.lng ?? item[0]);
+        const lat = Number(typeof item.getLat === "function" ? item.getLat() : item.lat ?? item[1]);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+          continue;
+        }
+        minLng = Math.min(minLng, lng);
+        minLat = Math.min(minLat, lat);
+        maxLng = Math.max(maxLng, lng);
+        maxLat = Math.max(maxLat, lat);
+      }
+
+      if (!Number.isFinite(minLng) || !Number.isFinite(minLat)) {
+        return 0;
+      }
+      return (maxLng - minLng) * (maxLat - minLat);
+    }
+
+    function getFitViewBoundaries(boundaries) {
+      return boundaries.filter((polygon) => getPolygonBoundsArea(polygon) >= 0.08);
+    }
+
+    function clearSelectedPolygons() {
+      for (const polygon of selectedPolygonLayers) {
+        polygon.setMap(null);
+      }
+      selectedPolygonLayers = [];
+    }
+
+    function hasSameSelectedRegion(region) {
+      if (!selectedRegion && !region) {
+        return true;
+      }
+      if (!selectedRegion || !region) {
+        return false;
+      }
+      return String(selectedRegion.adcode || "") === String(region.adcode || "") &&
+        String(selectedRegion.level || "") === String(region.level || "");
+    }
+
+    function clearSelectedRegion(map) {
+      hoverRequestId += 1;
+      if (!selectedRegion && !selectedPolygonLayers.length) {
+        return;
+      }
+      selectedRegion = null;
+      clearSelectedPolygons();
+      renderSelectionCard(map);
+    }
+
+    function renderSelectedPolygons(map) {
+      clearSelectedPolygons();
+      if (!selectedRegion || !Array.isArray(selectedRegion.rings)) {
+        return;
+      }
+
+      selectedPolygonLayers = selectedRegion.rings.map((ring) => {
+        const polygon = new AMap.Polygon({
+          path: ring,
+          clickable: true,
+          ...selectedStyle,
+        });
+        polygon.on("mousemove", (event) => {
+          if (typeof handleRegionHover === "function") {
+            handleRegionHover(event);
+          }
+        });
+        polygon.setMap(map);
+        return polygon;
+      });
+    }
+
+    function renderSelectionCard(map) {
+      const layer = document.getElementById("selectionLayer");
+      if (!layer) {
+        return;
+      }
+      if (!selectedRegion || !selectedRegion.center) {
+        layer.innerHTML = "";
+        return;
+      }
+
+      const point = map.lngLatToContainer(selectedRegion.center);
+      const statusText = selectedRegion.covered
+        ? escapeHtml(valueLabel) + "：" + escapeHtml(selectedRegion.value || "")
+        : escapeHtml(valueLabel) + "：未覆盖";
+
+      layer.innerHTML =
+        '<div style="position:absolute;left:' + point.x.toFixed(1) + 'px;top:' + point.y.toFixed(1) + 'px;">' +
+          '<div class="selected-card">' +
+            '<div class="selected-card__name">' + escapeHtml(selectedRegion.name || selectedRegion.adcode || "") + '</div>' +
+            '<div class="selected-card__status">' + statusText + '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function getProvinceAdcode(adcode) {
+      return String(adcode || "").slice(0, 2) + "0000";
+    }
+
+    function getCityAdcode(adcode) {
+      return String(adcode || "").slice(0, 4) + "00";
+    }
+
+    function getSelectedBoundarySource(region) {
+      const adcode = String(region.adcode || "");
+      if (region.level === "district") {
+        return {
+          path: "/geojson/city/" + getCityAdcode(adcode) + ".json",
+          adcode,
+        };
+      }
+      if (region.level === "city") {
+        return {
+          path: "/geojson/province/" + getProvinceAdcode(adcode) + ".json",
+          adcode,
+        };
+      }
+      return null;
+    }
+
+    function getDetailLayerSpecs() {
+      const specs = new Map();
+      for (const region of taskData.regions) {
+        const adcode = String(region.adcode || "");
+        if (!adcode) {
+          continue;
+        }
+
+        const provinceAdcode = getProvinceAdcode(adcode);
+        specs.set("province:" + provinceAdcode, {
+          path: "/geojson/province/" + provinceAdcode + ".json",
+          minZoom: 5.6,
+        });
+
+        if (!adcode.endsWith("0000")) {
+          const cityAdcode = adcode.endsWith("00") ? adcode : getCityAdcode(adcode);
+          specs.set("city:" + cityAdcode, {
+            path: "/geojson/city/" + cityAdcode + ".json",
+            minZoom: 7.6,
+          });
+        }
+      }
+      return Array.from(specs.values());
+    }
+
+    function getUniqueBoundarySources(regions) {
+      const sources = new Map();
+      for (const region of regions) {
+        const source = getSelectedBoundarySource(region);
+        if (!source) {
+          continue;
+        }
+        sources.set(source.path + ":" + source.adcode, source);
+      }
+      return Array.from(sources.values());
+    }
+
+    function getRegionClickThreshold(level) {
+      if (level === "district") {
+        return 9.2;
+      }
+      if (level === "city") {
+        return 7.4;
+      }
+      return 0;
+    }
+
+    function getFeatureDisplayName(properties, fallbackAdcode) {
+      return String(
+        properties.name ||
+        properties.adname ||
+        properties.fullname ||
+        properties.cityname ||
+        fallbackAdcode ||
+        ""
+      ).trim();
+    }
+
+    function getRegionCenterFromPolygon(polygon) {
+      if (!polygon || typeof polygon.getBounds !== "function") {
+        return null;
+      }
+      const bounds = polygon.getBounds();
+      if (!bounds || typeof bounds.getCenter !== "function") {
+        return null;
+      }
+      return bounds.getCenter();
+    }
+
+    function getLngLatPair(lnglat) {
+      if (!lnglat) {
+        return null;
+      }
+      const lng = Number(typeof lnglat.getLng === "function" ? lnglat.getLng() : lnglat.lng ?? lnglat[0]);
+      const lat = Number(typeof lnglat.getLat === "function" ? lnglat.getLat() : lnglat.lat ?? lnglat[1]);
+      return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
+    }
+
+    function getEventLngLat(map, event) {
+      if (event && event.lnglat) {
+        return event.lnglat;
+      }
+      const pixel = event && (event.pixel || event.containerPixel);
+      if (!pixel || typeof map.containerToLngLat !== "function") {
+        return null;
+      }
+      const x = Number(typeof pixel.getX === "function" ? pixel.getX() : pixel.x);
+      const y = Number(typeof pixel.getY === "function" ? pixel.getY() : pixel.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+      }
+      return map.containerToLngLat(new AMap.Pixel(x, y));
+    }
+
+    function getDomEventLngLat(map, event) {
+      const container = map && typeof map.getContainer === "function" ? map.getContainer() : null;
+      if (!container || !event || typeof map.containerToLngLat !== "function") {
+        return null;
+      }
+      const rect = container.getBoundingClientRect();
+      const x = Number(event.clientX) - rect.left;
+      const y = Number(event.clientY) - rect.top;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+      }
+      return map.containerToLngLat(new AMap.Pixel(x, y));
+    }
+
+    function rememberTapCandidate(event) {
+      if (!event || event.pointerType === "mouse" || event.isPrimary === false) {
+        return;
+      }
+      tapCandidate = {
+        id: event.pointerId,
+        x: Number(event.clientX),
+        y: Number(event.clientY),
+        time: Date.now(),
+      };
+    }
+
+    function consumeTapCandidate(event) {
+      if (!tapCandidate || !event || event.pointerId !== tapCandidate.id) {
+        tapCandidate = null;
+        return false;
+      }
+      const dx = Number(event.clientX) - tapCandidate.x;
+      const dy = Number(event.clientY) - tapCandidate.y;
+      const elapsed = Date.now() - tapCandidate.time;
+      tapCandidate = null;
+      return Math.hypot(dx, dy) <= 12 && elapsed <= 800;
+    }
+
+    function bindTouchTap(container, onTap) {
+      if (!container || typeof window.PointerEvent === "undefined") {
+        return;
+      }
+      container.addEventListener("pointerdown", rememberTapCandidate, { passive: true });
+      container.addEventListener("pointercancel", () => {
+        tapCandidate = null;
+      }, { passive: true });
+      container.addEventListener("pointerup", (event) => {
+        if (consumeTapCandidate(event)) {
+          onTap(event);
+        }
+      }, { passive: true });
+    }
+
+    function pointInRing(point, ring) {
+      if (!Array.isArray(ring) || ring.length < 3) {
+        return false;
+      }
+
+      const [lng, lat] = point;
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = Number(ring[i][0]);
+        const yi = Number(ring[i][1]);
+        const xj = Number(ring[j][0]);
+        const yj = Number(ring[j][1]);
+        if (![xi, yi, xj, yj].every(Number.isFinite)) {
+          continue;
+        }
+        const intersects = ((yi > lat) !== (yj > lat)) &&
+          (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+        if (intersects) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    function featureContainsPoint(feature, point) {
+      return normalizePolygonParts(feature.geometry).some((rings) => {
+        if (!Array.isArray(rings) || !rings.length || !pointInRing(point, rings[0])) {
+          return false;
+        }
+        return !rings.slice(1).some((hole) => pointInRing(point, hole));
+      });
+    }
+
+    function findFeatureAtPoint(geojson, point, level) {
+      if (!geojson || !Array.isArray(geojson.features) || !point) {
+        return null;
+      }
+      return geojson.features.find((feature) => {
+        const properties = feature.properties || {};
+        const adcode = String(properties.adcode || "");
+        return adcode && adcode !== "100000" &&
+          (!level || String(properties.level || "") === level) &&
+          featureContainsPoint(feature, point);
+      }) || null;
+    }
+
+    function createRegionFromFeature(feature) {
+      const properties = feature.properties || {};
+      const adcode = String(properties.adcode || "");
+      const coveredRegion = highlightedRegionByAdcode.get(adcode) || {};
+      const center = properties.centroid || properties.center || coveredRegion.center || null;
+      return {
+        name: getFeatureDisplayName(properties, adcode),
+        adcode,
+        level: String(properties.level || ""),
+        value: String(coveredRegion.value || ""),
+        center,
+        rings: normalizePolygonPaths(feature.geometry),
+        covered: highlightedAdcodes.has(adcode),
+      };
+    }
+
+    async function resolveClickedRegion(map, chinaGeoJson, lnglat) {
+      const point = getLngLatPair(lnglat);
+      if (!point) {
+        return null;
+      }
+
+      const provinceFeature = findFeatureAtPoint(chinaGeoJson, point, "province");
+      if (!provinceFeature) {
+        return null;
+      }
+      if (map.getZoom() < getRegionClickThreshold("city")) {
+        return createRegionFromFeature(provinceFeature);
+      }
+
+      const provinceAdcode = String((provinceFeature.properties || {}).adcode || "");
+      const provinceGeoJson = await loadGeoJson("/geojson/province/" + provinceAdcode + ".json");
+      const cityFeature = findFeatureAtPoint(provinceGeoJson, point, "city");
+      if (!cityFeature || map.getZoom() < getRegionClickThreshold("district")) {
+        return createRegionFromFeature(cityFeature || provinceFeature);
+      }
+
+      const cityAdcode = String((cityFeature.properties || {}).adcode || "");
+      const cityGeoJson = await loadGeoJson("/geojson/city/" + cityAdcode + ".json");
+      const districtFeature = findFeatureAtPoint(cityGeoJson, point, "district");
+      return createRegionFromFeature(districtFeature || cityFeature);
+    }
+
+    async function ensureDetailLayer(map, spec) {
+      if (renderedDetailLayers.has(spec.path)) {
+        return renderedDetailLayers.get(spec.path);
+      }
+      const geojson = await loadGeoJson(spec.path);
+      const polygons = renderFeatureCollection(map, geojson, () => detailLineStyle);
+      for (const polygon of polygons) {
+        polygon.hide();
+      }
+      renderedDetailLayers.set(spec.path, polygons);
+      return polygons;
+    }
+
+    async function updateDetailLayers(map, specs) {
+      const zoom = map.getZoom();
+      for (const spec of specs) {
+        const renderedPolygons = renderedDetailLayers.get(spec.path);
+        if (zoom < spec.minZoom) {
+          if (renderedPolygons) {
+            for (const polygon of renderedPolygons) {
+              polygon.hide();
+            }
+          }
+          continue;
+        }
+        const polygons = await ensureDetailLayer(map, spec);
+        for (const polygon of polygons) {
+          polygon.show();
+        }
+      }
+    }
+
+    async function renderDynamicLayers(map, detailLayerSpecs, options = {}) {
+      await updateDetailLayers(map, detailLayerSpecs);
+      renderSelectionCard(map);
+      if (interactionFallbackTimer) {
+        window.clearTimeout(interactionFallbackTimer);
+        interactionFallbackTimer = null;
+      }
+      document.body.classList.remove("is-map-interacting");
+      if (options.finishBoot) {
+        document.body.classList.remove("is-map-booting");
+      }
+    }
+
+    function markMapInteracting(onFallback) {
+      document.body.classList.add("is-map-interacting");
+      if (interactionFallbackTimer) {
+        window.clearTimeout(interactionFallbackTimer);
+      }
+      interactionFallbackTimer = window.setTimeout(() => {
+        interactionFallbackTimer = null;
+        if (typeof onFallback === "function") {
+          onFallback();
+        } else {
+          document.body.classList.remove("is-map-interacting");
+        }
+      }, 900);
+    }
+
+    function scheduleDynamicLayers(map, detailLayerSpecs, options = {}) {
+      if (renderScheduled) {
+        return;
+      }
+      renderScheduled = true;
+      window.requestAnimationFrame(() => {
+        renderScheduled = false;
+        renderDynamicLayers(map, detailLayerSpecs, options);
+      });
+    }
+
+    function waitForMapFrame() {
+      return new Promise((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(resolve);
+        });
+      });
+    }
+
+    async function init() {
+      if (!window.AMap) {
+        throw new Error("AMap JS API not loaded");
+      }
+      if (!taskData.regions.length) {
+        throw new Error("task data not ready");
+      }
+
+      window.setTimeout(() => {
+        window.__MAP_READY__ = true;
+      }, {{ map_ready_fallback_timeout_ms }});
+
+      document.body.classList.add("is-map-interacting");
+      document.getElementById("summary").innerHTML =
+        taskData.regions.map((region) =>
+          "<div><strong>地区：</strong>" + escapeHtml(region.name) + "&nbsp;&nbsp;&nbsp;&nbsp;<strong>" + escapeHtml(valueLabel) + "：</strong>" + escapeHtml(region.value) + "</div>"
+        ).join("");
+
+      const map = new AMap.Map("map", {
+        viewMode: "2D",
+        zoom: {{ share_map_zoom }},
+        zooms: [{{ share_map_zooms_0 }}, {{ share_map_zooms_1 }}],
+        resizeEnable: true,
+        mapStyle: "amap://styles/whitesmoke",
+        showLabel: false,
+        features: [],
+      });
+
+      await loadMapPlugins();
+      map.addControl(new AMap.Scale({ position: "LB" }));
+
+      const chinaGeoJson = await loadGeoJson("/geojson/china.json");
+      const baseBoundaries = renderFeatureCollection(map, chinaGeoJson, (feature) => {
+        const adcode = String((feature.properties || {}).adcode || "");
+        return highlightedAdcodes.has(adcode) ? highlightStyle : baseAreaStyle;
+      }, (feature) => String((feature.properties || {}).level || "") === "province")
+        .filter((polygon) => {
+          const path = polygon.getPath();
+          return Array.isArray(path) && path.length > 0;
+        });
+
+      const provinceHighlightBoundaries = [];
+      renderFeatureCollection(map, chinaGeoJson, (feature) => {
+        const adcode = String((feature.properties || {}).adcode || "");
+        return highlightedAdcodes.has(adcode) ? highlightStyle : baseAreaStyle;
+      }, (feature) => {
+        const properties = feature.properties || {};
+        const adcode = String(properties.adcode || "");
+        return String(properties.level || "") === "province" && highlightedAdcodes.has(adcode);
+      }).forEach((polygon) => provinceHighlightBoundaries.push(polygon));
+
+      const highlightedBoundaries = [...provinceHighlightBoundaries];
+      const boundarySources = getUniqueBoundarySources(taskData.regions);
+      const boundaryGeoJsonMap = await loadGeoJsonEntries(
+        boundarySources.map((source) => source.path)
+      );
+      for (const source of boundarySources) {
+        const geojson = boundaryGeoJsonMap.get(source.path);
+        highlightedBoundaries.push(...renderFeatureCollection(
+          map,
+          geojson,
+          () => highlightStyle,
+          (feature) => String((feature.properties || {}).adcode || "") === source.adcode
+        ));
+      }
+
+      const detailLayerSpecs = getDetailLayerSpecs();
+      const scheduleAfterInteraction = (options = {}) => {
+        scheduleDynamicLayers(map, detailLayerSpecs, options);
+      };
+      map.on("zoomstart", () => {
+        markMapInteracting(scheduleAfterInteraction);
+      });
+      map.on("movestart", () => {
+        markMapInteracting(scheduleAfterInteraction);
+      });
+      map.on("zoomend", () => {
+        scheduleAfterInteraction();
+      });
+      map.on("moveend", () => {
+        scheduleAfterInteraction();
+      });
+      const selectRegionAt = async (lnglat, options = {}) => {
+        if (!lnglat) {
+          return;
+        }
+        const requestId = ++hoverRequestId;
+        const region = await resolveClickedRegion(map, chinaGeoJson, lnglat);
+        if (requestId !== hoverRequestId) {
+          return;
+        }
+        if (!region) {
+          if (options.clearOnMiss !== false) {
+            clearSelectedRegion(map);
+          }
+          return;
+        }
+        if (hasSameSelectedRegion(region)) {
+          return;
+        }
+        selectedRegion = region;
+        renderSelectedPolygons(map);
+        renderSelectionCard(map);
+      };
+
+      handleRegionHover = async (event) => {
+        const lnglat = getEventLngLat(map, event) || getDomEventLngLat(map, event);
+        if (!lnglat) {
+          clearSelectedRegion(map);
+          return;
+        }
+        await selectRegionAt(lnglat);
+      };
+      const handleRegionTap = async (event) => {
+        const lnglat = getEventLngLat(map, event) || getDomEventLngLat(map, event);
+        if (!lnglat) {
+          return;
+        }
+        await selectRegionAt(lnglat);
+      };
+      map.getContainer().addEventListener("mousemove", (event) => {
+        if (typeof handleRegionHover !== "function") {
+          return;
+        }
+        const lnglat = getDomEventLngLat(map, event);
+        if (!lnglat) {
+          return;
+        }
+        handleRegionHover({ lnglat });
+      }, true);
+      map.getContainer().addEventListener("mouseleave", () => {
+        clearSelectedRegion(map);
+      });
+      map.on("mousemove", handleRegionHover);
+      map.on("click", handleRegionTap);
+      bindTouchTap(map.getContainer(), handleRegionTap);
+      window.addEventListener("resize", () => {
+        markMapInteracting(scheduleAfterInteraction);
+        scheduleAfterInteraction();
+      });
+
+      if (baseBoundaries.length) {
+        map.setFitView(
+          getFitViewBoundaries(baseBoundaries),
+          false,
+          [{{ multi_fitview_padding }}],
+          15
+        );
+      }
+      await waitForMapFrame();
+      await renderDynamicLayers(map, detailLayerSpecs, { finishBoot: true });
+
+      map.on("complete", () => {
+        window.setTimeout(() => {
+          window.__MAP_READY__ = true;
+        }, {{ map_complete_delay_ms }});
+      });
+    }
+
+    init().catch((error) => {
+      document.body.innerHTML = '<pre style="padding:16px;color:#b00020;">' + escapeHtml(error.message) + '</pre>';
+      window.__MAP_READY__ = true;
+    });
+  </script>
+</body>
+</html>

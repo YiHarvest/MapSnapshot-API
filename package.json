@@ -1,0 +1,26 @@
+{
+  "name": "region-view-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "snapshot:server": "uv run python server/app.py",
+    "test:snapshot": "uv run python test/verify_snapshot_image.py",
+    "test:snapshot:e2e": "uv run python test/snapshot_api_e2e.py"
+  },
+  "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "sass": "^1.83.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vue-tsc": "^2.1.10"
+  }
+}
