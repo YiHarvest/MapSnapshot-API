@@ -1,0 +1,203 @@
+html,
+body,
+#map {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
+body {
+  background: #f4f6f8;
+  font-family: "Noto Sans CJK SC", sans-serif;
+}
+
+#map {
+  background: #fff !important;
+  touch-action: none;
+}
+
+.amap-layer-tile,
+.amap-copyright,
+.amap-logo,
+.amap-maptype,
+[class*="amap-copyright"],
+[class*="amap-logo"],
+a[href*="amap.com"],
+a[href*="autonavi.com"] {
+  display: none !important;
+}
+
+.amap-controls,
+.amap-scale-textcontrol,
+.amap-scale,
+[class*="amap-scale"] {
+  z-index: 150 !important;
+}
+
+body.is-map-booting #map,
+body.is-map-booting #selectionLayer,
+body.is-map-interacting #selectionLayer {
+  opacity: 0;
+}
+
+#selectionLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  pointer-events: none;
+}
+
+.map-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.selected-card {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 156px;
+  max-width: 240px;
+  padding: 12px 18px;
+  border: 1px solid rgb(255 255 255 / 95%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 98%);
+  box-shadow: 0 10px 24px rgb(31 45 61 / 18%);
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: left;
+  transform: translate(-50%, -110%);
+  white-space: normal;
+}
+
+.amap-marker-content {
+  width: max-content !important;
+}
+
+.selected-card::after {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  width: 13px;
+  height: 13px;
+  border-right: 1px solid rgb(255 255 255 / 95%);
+  border-bottom: 1px solid rgb(255 255 255 / 95%);
+  border-radius: 2px;
+  background: rgb(255 255 255 / 98%);
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.selected-card__name {
+  color: #374151;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.selected-card__status {
+  margin-top: 8px;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.snapshot-summary {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 1001;
+  max-width: min(520px, calc(100vw - 36px));
+  padding: 12px 16px;
+  border: 1px solid rgb(148 163 184 / 22%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 6px 18px rgb(31 45 61 / 10%);
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.snapshot-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 18px;
+  row-gap: 2px;
+}
+
+.snapshot-summary strong {
+  color: #111827;
+  font-weight: 800;
+}
+
+.snapshot-summary .region-item,
+.snapshot-summary .district-item {
+  margin-bottom: 12px;
+}
+
+.snapshot-summary .region-item:last-child,
+.snapshot-summary .district-item:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .snapshot-summary {
+    top: 8px;
+    left: 8px;
+    box-sizing: border-box;
+    max-width: calc(100vw - 16px);
+    max-height: min(30vh, 180px);
+    padding: 7px 9px;
+    overflow-y: auto;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.32;
+    scrollbar-width: thin;
+  }
+
+  .snapshot-summary > div {
+    column-gap: 10px;
+    row-gap: 1px;
+    word-break: break-word;
+  }
+
+  .snapshot-summary .region-item,
+  .snapshot-summary .district-item {
+    margin-bottom: 6px;
+    word-break: break-word;
+  }
+
+  .selected-card {
+    min-width: 116px;
+    max-width: min(220px, calc(100vw - 32px));
+    padding: 9px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+
+  .selected-card__name {
+    font-size: 14px;
+  }
+
+  .selected-card__status {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+}
+
