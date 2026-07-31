@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}地图截图{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/share.css" />
+  <script>
+    window.__MAP_READY__ = false;
+    {{ security_config_js | safe }}
+  </script>
+  <script src="https://webapi.amap.com/maps?v=2.0&key={{ amap_key }}"></script>
+</head>
+<body class="is-map-booting is-map-interacting">
+  <div class="snapshot-summary" id="summary"></div>
+  <div id="map"></div>
+  {% block overlays %}{% endblock %}
+  <div id="selectionLayer" aria-hidden="true"></div>
+  <script src="/static/js/share-common.js?v={{ share_common_version }}"></script>
+  {% block page_script %}{% endblock %}
+</body>
+</html>

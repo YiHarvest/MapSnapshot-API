@@ -2,16 +2,13 @@
 .env.local
 .env.*.local
 
-node_modules/
-dist/
-build/
-coverage/
-
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+coverage/
 
 *.log
 *.sqlite3
@@ -26,3 +23,6 @@ env/
 public/snapshots/
 docs/
 uv.lock
+
+# Claude Code
+.claude/
